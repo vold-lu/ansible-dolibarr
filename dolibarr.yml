@@ -1,0 +1,150 @@
+---
+- name: Update and upgrade installed packages
+  hosts: all
+  become: yes
+  tasks:
+    - apt:
+        upgrade: true
+        update_cache: true
+
+- name: Install base packages
+  hosts: all
+  become: yes
+  tasks:
+    - apt:
+        pkg:
+          - vim
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+          - curl
+          - git
+          - gpg
+          - gpg-agent
+
+- name: Install MariaDB
+  hosts: all
+  become: yes
+  roles:
+    - role: geerlingguy.mysql
+      vars:
+        mysql_bind_address: 127.0.0.1
+        mysql_packages:
+          - mariadb-server
+          - mariadb-client
+        mysql_databases:
+          - name: "dolibarr"
+            collation: utf8_general_ci
+            encoding: utf8
+        mysql_users:
+          - name: "dolibarr"
+            host: localhost
+            password: dolibarr
+            priv: "dolibarr.*:ALL"
+          - name: "dolibarr"
+            host: 127.0.0.1
+            password: dolibarr
+            priv: "dolibarr.*:ALL"
+
+- name: Install PHP
+  hosts: all
+  become: yes
+  roles:
+    - role: geerlingguy.php-versions
+      vars:
+        php_version: "7.4"
+    - role: geerlingguy.php
+      vars:
+        php_webserver_daemon: "nginx"
+        php_default_version_debian: "7.4"
+        php_packages_extra:
+          - php7.4-mysql
+          - php7.4-bcmath
+          - php7.4-intl
+          - php7.4-zip
+
+- name: Setup dolibarr user
+  hosts: all
+  become: yes
+  tasks:
+    - name: Create dolibarr group
+      ansible.builtin.group:
+        name: "dolibarr"
+    - name: Create dolibarr user
+      ansible.builtin.user:
+        name: "dolibarr"
+        create_home: true
+        group: "dolibarr"
+
+- name: Setup appropriate permissions over /var/www
+  hosts: all
+  become: yes
+  tasks:
+    - ansible.builtin.shell: |
+        chgrp www-data /var/www
+        chmod g+s /var/www
+        setfacl -m "default:group::rwx" /var/www
+
+- name: Create Dolibarr documents folder
+  hosts: all
+  become: yes
+  tasks:
+    - file:
+        path: /var/lib/dolibarr
+        state: directory
+        owner: dolibarr
+        group: www-data
+        mode: 0770
+        recurse: true
+    - ansible.builtin.shell: |
+        chgrp www-data /var/lib/dolibarr
+        chmod g+s /var/lib/dolibarr
+        setfacl -m "default:group::rwx" /var/lib/dolibarr
+
+- name: Clone Dolibarr source code
+  hosts: all
+  become: yes
+  tasks:
+    - raw: test -e /var/www/dolibarr
+      ignore_errors: yes
+      register: dolibarr_cloned
+    - ansible.builtin.shell: |
+        cd /var/www
+        git clone -b {{ git_branch | default('14.0') }} {{ git_url | default('https://github.com/Dolibarr/dolibarr.git') }} dolibarr
+        chmod 0770 /var/www/dolibarr
+        chown -R dolibarr:www-data /var/www/dolibarr
+      when: dolibarr_cloned.rc != 0
+
+- name: Tweak Dolibarr forced configuration file
+  hosts: all
+  become: yes
+  tasks:
+    - name: Copy Dolibarr configuration file
+      ansible.builtin.template:
+        src: ./dolibarr.conf
+        dest: /var/www/dolibarr/htdocs/install/install.forced.php
+        owner: dolibarr
+        group: www-data
+        mode: "0640"
+
+- name: Configure Nginx
+  hosts: all
+  become: yes
+  tasks:
+    - name: Copy Nginx configuration file
+      ansible.builtin.template:
+        src: ./nginx.conf
+        dest: /etc/nginx/sites-available/{{ app_url }}.conf
+        owner: root
+        group: root
+        mode: "0640"
+    - name: Enable the website
+      file:
+        src: /etc/nginx/sites-available/{{ app_url }}.conf
+        dest: /etc/nginx/sites-enabled/{{ app_url }}.conf
+        state: link
+    - name: Reload Nginx
+      service:
+        name: nginx.service
+        state: reloaded
+        enabled: true

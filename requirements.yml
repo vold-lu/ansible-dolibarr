@@ -1,0 +1,5 @@
+---
+collections:
+  - name: geerlingguy.mysql
+  - name: geerlingguy.php-versions
+  - name: geerlingguy.php
