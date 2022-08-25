@@ -13,7 +13,7 @@ git clone https://github.com/vold-lu/ansible-dolibarr.git
 cd ansible-dolibarr
 
 # Install the used ansible collections
-ansible-galaxy collection install -r requirements.yml
+ansible-galaxy install -r requirements.yml
 
 # Create the inventory file (replace 127.0.0.1 by your host IP address)
 echo '127.0.0.1' >> .inventory

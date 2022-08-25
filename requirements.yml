@@ -1,5 +1,8 @@
 ---
-collections:
+roles:
   - name: geerlingguy.mysql
+    versions: 4.0.1
   - name: geerlingguy.php-versions
+    versions: 5.0.0
   - name: geerlingguy.php
+    versions: 4.8.0
